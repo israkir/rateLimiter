@@ -1,18 +1,27 @@
 import { Request } from 'express';
-import { RateLimiter } from '../src/middleware';
-import { RedisClient, convertToMs } from '../src/utils';
-import { RateLimitConfigInterface } from '../src/types';
+import { RateLimiter } from '.';
+import { RedisRateLimitService } from '../services';
+import { RateLimitConfigInterface } from '../types';
+import { convertToMs } from '../utils';
+import pino from 'pino';
 
-// Mock RedisClient
-jest.mock('../src/utils/redisClient');
+// Mock RedisRateLimitService
+jest.mock('../services/redisRateLimitService');
+jest.mock('pino', ()=> {
+  return () => {
+    return {
+      info: jest.fn()
+    }
+  }
+});
 
 describe('RateLimiter', () => {
   let rateLimiter: RateLimiter;
-  let mockRedisClient: jest.Mocked<RedisClient>;
+  let mockRedisRateLimitService: jest.Mocked<RedisRateLimitService>;
   let mockConfig: RateLimitConfigInterface;
 
   beforeEach(() => {
-    mockRedisClient = new RedisClient('') as jest.Mocked<RedisClient>;
+    mockRedisRateLimitService = new RedisRateLimitService('') as jest.Mocked<RedisRateLimitService>;
     mockConfig = {
       ttl: 3600,
       unauthLimit: {
@@ -44,7 +53,7 @@ describe('RateLimiter', () => {
         },
       ],
     };
-    rateLimiter = new RateLimiter(mockRedisClient, mockConfig);
+    rateLimiter = new RateLimiter(mockRedisRateLimitService, mockConfig);
   });
 
   const createMockRequest = (path: string, ip: string, isAuthenticated: boolean): Partial<Request> => ({
@@ -53,11 +62,15 @@ describe('RateLimiter', () => {
     headers: isAuthenticated ? { authorization: 'Bearer token' } : {},
   });
 
-  test('calculateLimit for unauthenticated user', async () => {
+  test('evaluateRateLimit for unauthenticated user', async () => {
     const mockRequest = createMockRequest('/api', '127.0.0.1', false);
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 5, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 5,
+      ttl: 3000,
+    });
 
-    const result = await rateLimiter.calculateLimit(mockRequest as Request);
+    const result = await rateLimiter.evaluateRateLimit(mockRequest as Request);
 
     expect(result).toEqual({
       tooManyRequests: false,
@@ -68,11 +81,15 @@ describe('RateLimiter', () => {
     });
   });
 
-  test('calculateLimit for authenticated user', async () => {
+  test('evaluateRateLimit for authenticated user', async () => {
     const mockRequest = createMockRequest('/api', '127.0.0.1', true);
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 15, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 15,
+      ttl: 3000,
+    });
 
-    const result = await rateLimiter.calculateLimit(mockRequest as Request);
+    const result = await rateLimiter.evaluateRateLimit(mockRequest as Request);
 
     expect(result).toEqual({
       tooManyRequests: false,
@@ -83,11 +100,15 @@ describe('RateLimiter', () => {
     });
   });
 
-  test('calculateLimit for override event', async () => {
+  test('evaluateRateLimit for override event', async () => {
     const mockRequest = createMockRequest('/special', '127.0.0.1', false);
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 3, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 3,
+      ttl: 3000,
+    });
 
-    const result = await rateLimiter.calculateLimit(mockRequest as Request);
+    const result = await rateLimiter.evaluateRateLimit(mockRequest as Request);
 
     expect(result).toEqual({
       tooManyRequests: false,
@@ -98,11 +119,15 @@ describe('RateLimiter', () => {
     });
   });
 
-  test('calculateLimit when too many requests', async () => {
+  test('evaluateRateLimit when too many requests', async () => {
     const mockRequest = createMockRequest('/api', '127.0.0.1', false);
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: true, requests: 11, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: true,
+      requests: 11,
+      ttl: 3000,
+    });
 
-    const result = await rateLimiter.calculateLimit(mockRequest as Request);
+    const result = await rateLimiter.evaluateRateLimit(mockRequest as Request);
 
     expect(result).toEqual({
       tooManyRequests: true,
@@ -113,11 +138,15 @@ describe('RateLimiter', () => {
     });
   });
 
-  test('calculateLimit when requests exceed limit', async () => {
+  test('evaluateRateLimit when requests exceed limit', async () => {
     const mockRequest = createMockRequest('/api', '127.0.0.1', false);
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 11, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 11,
+      ttl: 3000,
+    });
 
-    const result = await rateLimiter.calculateLimit(mockRequest as Request);
+    const result = await rateLimiter.evaluateRateLimit(mockRequest as Request);
 
     expect(result).toEqual({
       tooManyRequests: true,

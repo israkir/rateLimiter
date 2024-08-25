@@ -1,7 +1,7 @@
-import Redis from 'ioredis';
-import { RateLimit, RateLimitResult } from '../types';
+import Redis, { ChainableCommander } from 'ioredis';
+import { ChainableCommanderReturnType, RateLimit, RateLimitResult } from '../types';
 
-export class RedisClient {
+export class RedisRateLimitService {
   private client: Redis;
 
   constructor(redisUrl: string) {
@@ -15,11 +15,11 @@ export class RedisClient {
 
   async incrExpireCalcSlidingLog(key: string, configTtl: number, ratelimit: RateLimit): Promise<RateLimitResult> {
     // increment and retuen time to live
-    const [requests, ttl] = await this.incrAndExpire(key, configTtl);
+    const [requests, ttl]: [number, number] = await this.incrAndExpire(key, configTtl);
 
     // calculating slider log for a specific time frame
     // and now allowing user to go beyond that
-    const isNotAllowed = await this.calcSliderLog(
+    const isNotAllowed: boolean = await this.isSlidingWindowLimitExceeded(
       `${key}-slide`,
       ratelimit.slidingLog.windowSize,
       ratelimit.slidingLog.maxRequests
@@ -34,17 +34,17 @@ export class RedisClient {
   async incrAndExpire(key: string, windowMs: number): Promise<[number, number]> {
     // this.removeKey(key)
 
-    const multi = this.client.multi();
+    const multi: ChainableCommander = this.client.multi();
     multi.incr(key);
     multi.pttl(key);
-    const result = await multi.exec();
+    const result: ChainableCommanderReturnType = await multi.exec();
 
     if (!result || result.length !== 2 || result[0][0] || result[1][0]) {
       throw new Error('Unexpected result from Redis');
     }
 
-    const count = result[0][1] as number;
-    const ttl = result[1][1] as number;
+    const count: number = result[0][1] as number;
+    const ttl: number = result[1][1] as number;
 
     if (ttl && ttl === -1) {
       await this.client.pexpire(key, windowMs);
@@ -55,15 +55,15 @@ export class RedisClient {
   }
 
   // sliding log allowed or not
-  async calcSliderLog(key: string, windowSizeMs: number, maxRequests: number): Promise<boolean> {
+  async isSlidingWindowLimitExceeded(key: string, windowSizeMs: number, maxRequests: number): Promise<boolean> {
     // this.removeKey(key)
 
-    const now = Date.now();
+    const now: number = Date.now();
 
-    const windowStart = now - windowSizeMs;
+    const windowStart: number = now - windowSizeMs;
 
     // Start a Redis transaction
-    const multi = this.client.multi();
+    const multi: ChainableCommander = this.client.multi();
 
     // Remove timestamps outside the current window
     multi.zremrangebyscore(key, 0, windowStart);
@@ -78,14 +78,14 @@ export class RedisClient {
     multi.pexpire(key, windowSizeMs);
 
     // Execute the transaction
-    const results = await multi.exec();
+    const results: ChainableCommanderReturnType = await multi.exec();
 
     if (!results) {
       throw new Error('Redis transaction failed');
     }
 
     // The count is the second command's result (zcard)
-    const count = results[1][1] as number;
+    const count: number = results[1][1] as number;
 
     return count > maxRequests;
   }

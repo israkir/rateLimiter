@@ -1,2 +1,2 @@
 export const PORT = 3002;
-export const REDIT_URI = 'redis://localhost:6379';
+export const REDIS_URI = 'redis://localhost:6379';

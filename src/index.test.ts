@@ -1,20 +1,29 @@
 import express from 'express';
 import request from 'supertest';
-import { RateLimiter } from '../src/middleware';
-import { RedisClient, convertToMs } from '../src/utils';
-import { RateLimitConfigInterface } from '../src/types';
+import { RateLimiter } from './middleware';
+import { RedisRateLimitService } from './services';
+import { RateLimitConfigInterface } from './types';
+import { convertToMs } from './utils';
 
-jest.mock('../src/utils/redisClient');
+jest.mock('./services/redisRateLimitService');
+jest.mock('pino', ()=> {
+  return () => {
+    return {
+      info: jest.fn(),
+      error: jest.fn()
+    }
+  }
+});
 
 describe('RateLimiter Middleware', () => {
   let app: express.Application;
   let rateLimiter: RateLimiter;
-  let mockRedisClient: jest.Mocked<RedisClient>;
+  let mockRedisRateLimitService: jest.Mocked<RedisRateLimitService>;
   let mockConfig: RateLimitConfigInterface;
 
   beforeEach(() => {
     app = express();
-    mockRedisClient = new RedisClient('') as jest.Mocked<RedisClient>;
+    mockRedisRateLimitService = new RedisRateLimitService('') as jest.Mocked<RedisRateLimitService>;
     mockConfig = {
       ttl: 3000,
       unauthLimit: {
@@ -44,17 +53,34 @@ describe('RateLimiter Middleware', () => {
             },
           },
         },
+        {
+          url: '/off-sale',
+          startTime: new Date(Date.now() - 2 * 3600000), // 1 hour ago
+          endTime: new Date(Date.now() - 3600000), // 1 hour from now
+          rateLimit: {
+            limit: 2,
+            slidingLog: {
+              windowSize: convertToMs(1, 'min'),
+              maxRequests: 5,
+            },
+          },
+        },
       ],
     };
-    rateLimiter = new RateLimiter(mockRedisClient, mockConfig);
+    rateLimiter = new RateLimiter(mockRedisRateLimitService, mockConfig);
 
     app.use(rateLimiter.middleware);
     app.get('/test', (req, res) => res.sendStatus(200));
     app.get('/special', (req, res) => res.sendStatus(200));
+    app.get('/off-sale', (req, res) => res.sendStatus(200));
   });
 
   test('Should allow requests within rate limit', async () => {
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 5, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 5,
+      ttl: 3000,
+    });
 
     const response = await request(app).get('/test');
 
@@ -65,7 +91,11 @@ describe('RateLimiter Middleware', () => {
   });
 
   test('Should block requests exceeding rate limit', async () => {
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: true, requests: 11, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: true,
+      requests: 11,
+      ttl: 3000,
+    });
 
     const response = await request(app).get('/test');
 
@@ -77,7 +107,11 @@ describe('RateLimiter Middleware', () => {
   });
 
   test('Should apply different limit for authenticated requests', async () => {
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 15, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 15,
+      ttl: 3000,
+    });
 
     const response = await request(app).get('/test').set('Authorization', 'Bearer token');
 
@@ -87,7 +121,11 @@ describe('RateLimiter Middleware', () => {
   });
 
   test('Should apply override limit for special route', async () => {
-    mockRedisClient.incrExpireCalcSlidingLog.mockResolvedValue({ isNotAllowed: false, requests: 3, ttl: 3000 });
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 3,
+      ttl: 3000,
+    });
 
     const response = await request(app).get('/special');
 
@@ -96,8 +134,23 @@ describe('RateLimiter Middleware', () => {
     expect(response.headers['x-ratelimit-remaining']).toBe('2');
   });
 
+  test('Should not apply override limit for special route, time is over', async () => {
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockResolvedValue({
+      isNotAllowed: false,
+      requests: 3,
+      ttl: 3000,
+    });
+
+    const response = await request(app).get('/off-sale');
+
+    expect(response.status).toBe(200);
+    // off sale time period, so the unauth limit will be used
+    expect(response.headers['x-ratelimit-limit']).toBe('10');
+    expect(response.headers['x-ratelimit-remaining']).toBe('7');
+  });
+
   test('Should handle errors gracefully', async () => {
-    mockRedisClient.incrExpireCalcSlidingLog.mockRejectedValue(new Error('Redis error'));
+    mockRedisRateLimitService.incrExpireCalcSlidingLog.mockRejectedValue(new Error('Redis error'));
 
     const response = await request(app).get('/test');
 

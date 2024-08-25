@@ -1,5 +1,6 @@
-import { convertToMs } from '../utils';
+import moment from 'moment';
 import { RateLimitConfigInterface } from '../types';
+import { convertToMs } from '../utils';
 
 export const defaultConfig: RateLimitConfigInterface = {
   ttl: convertToMs(1, 'hour'), // time to live for the request this is set to 1 hour
@@ -21,8 +22,8 @@ export const defaultConfig: RateLimitConfigInterface = {
   override: [
     {
       url: '/sale', // special event path
-      startTime: new Date('2024-08-23T05:38:44.981Z'), // when the event starts
-      endTime: new Date('2024-08-23T05:40:44.981Z'), // when the event ends
+      startTime: moment('25/08/2024, 17:05', 'DD/MM/YYYY, HH:mm').toDate(), // when the event starts
+      endTime: moment('25/08/2024, 17:35', 'DD/MM/YYYY, HH:mm').toDate(), // when the event ends
       rateLimit: {
         // rate limit for the sale event
         limit: 400, // Increased limit during the sale

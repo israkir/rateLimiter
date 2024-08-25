@@ -1,4 +1,13 @@
-import { RateLimitConfigInterface, RateLimitResult, RateLimit } from './rateLimiterTypes';
-import { TTL_UNIT_TYPE, CalculateLimitResult } from './types';
+import { RateLimit, RateLimitConfigInterface, RateLimitResult } from './rateLimiterTypes';
+import { ChainableCommanderReturnType } from './redisTypes';
+import { CustomRequest, EvaluateRateLimitResult, TTL_UNIT_TYPE } from './types';
 
-export { RateLimit, RateLimitConfigInterface, RateLimitResult, TTL_UNIT_TYPE, CalculateLimitResult };
+export {
+  ChainableCommanderReturnType,
+  CustomRequest,
+  EvaluateRateLimitResult,
+  RateLimit,
+  RateLimitConfigInterface,
+  RateLimitResult,
+  TTL_UNIT_TYPE,
+};

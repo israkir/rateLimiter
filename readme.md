@@ -3,6 +3,9 @@
 ## Objective
 Expressjs poject written in Typescipt, which adds rate limiter to an api (middleware), while using using Redis to keep track of api counts.
 
+**Note**
+- redis client should be installed on the system
+
 ## Run the code
 ```sh
 npm start
@@ -17,11 +20,6 @@ curl --location 'localhost:3002'
 ```sh
 curl --location 'localhost:3002' \
 --header 'Authorization: Bearer customToken'
-```
-
-### Curl command to call the api for special event
-```sh
-curl --location 'localhost:3002/sale'
 ```
 
 ### Customise rate limiter
@@ -47,8 +45,8 @@ export const defaultConfig: RateLimitConfigInterface = {
   override: [
     {
       url: '/sale', // special event path
-      startTime: new Date('2024-08-23T05:38:44.981Z'), // when the event starts
-      endTime: new Date('2024-08-23T05:40:44.981Z'), // when the event ends
+      startTime: moment('23/08/2024, 17:05', 'DD/MM/YYYY, HH:mm').toDate(), // when the event starts
+      endTime: moment('23/08/2024, 17:35', 'DD/MM/YYYY, HH:mm').toDate(), // when the event ends
       rateLimit: { // rate limit for the sale event
         limit: 400, // Increased limit during the sale
         slidingLog: {
@@ -61,7 +59,67 @@ export const defaultConfig: RateLimitConfigInterface = {
 };
 ```
 
+### Calling Special event
+Change the `startTime` and `endTime` in the config file  `/src/config/rateLimiterConfig.ts`
+
+```typescript
+{
+...
+override: [
+    {
+      url: '/sale', // special event path
+      startTime: moment('23/08/2024, 17:05', 'DD/MM/YYYY, HH:mm').toDate(), // when the event starts
+      endTime: moment('23/08/2024, 17:35', 'DD/MM/YYYY, HH:mm').toDate(), // when the event ends
+      ...
+    },
+...
+}
+
+```
+
+Call the endpoint for special event
+```sh
+curl --location 'localhost:3002/sale'
+```
+
+### Adding multiple special events
+Add below object to `override` object in config file located here `/src/config/rateLimiterConfig.ts`
+
+```typescript
+{
+...
+override: [
+    {
+      ...
+    },
+    {
+      url: '/presale', // special event path
+      startTime: moment('25/08/2024, 17:05', 'DD/MM/YYYY, HH:mm').toDate(), // when the event starts
+      endTime: moment('25/08/2024, 17:35', 'DD/MM/YYYY, HH:mm').toDate(), // when the event ends
+      rateLimit: { // rate limit for the sale event
+        limit: 500, // Increased limit during the presale
+        slidingLog: {
+          windowSize: convertToMs(1, 'min'),
+          maxRequests: 50, // allowing 50 requests per min
+        },
+      },
+    },
+...
+}
+
+```
+
+Call the endpoint for special event
+```sh
+curl --location 'localhost:3002/presale'
+```
+
 ## Run test
 ```sh
 npm test
+```
+
+## Running in production
+```sh
+npm run build-run
 ```
